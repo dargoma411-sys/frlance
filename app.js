@@ -513,13 +513,14 @@
       return `<text x="${padL - 8}" y="${y + 3}" text-anchor="end">${val >= 1000 ? Math.round(val/1000) + 'k' : val}</text>`;
     }).join('');
 
-    const bars = months.map((m, i) => {
+        const bars = months.map((m, i) => {
       const x = padL + stepX * i + (stepX - barW) / 2;
       const h = (m.sum / max) * innerH;
       const y = padT + innerH - h;
       const isCurrent = i === months.length - 1;
+      const opacity = isCurrent ? '1' : '0.85';
       return `
-        <rect class="bar" x="${x}" y="${y}" width="${barW}" height="${Math.max(h, 1)}" rx="4" ${isCurrent ? 'fill-opacity="1"' : 'fill-opacity="0.85'"}>
+        <rect class="bar" x="${x}" y="${y}" width="${barW}" height="${Math.max(h, 1)}" rx="4" fill-opacity="${opacity}">
           <title>${m.label}: ${fmt.money(m.sum, null, state.settings)}</title>
         </rect>
         <text x="${x + barW/2}" y="${H - 14}" text-anchor="middle">${m.label}</text>
