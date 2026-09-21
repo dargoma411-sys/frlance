@@ -32,6 +32,17 @@
     done: 'green', paid: 'green',
   };
 
+  const DEFAULT_HOTKEYS = {
+    newOrder:  'KeyN',
+    newClient: 'KeyK',
+    search:    'Slash',
+    route1:    'Digit1',
+    route2:    'Digit2',
+    route3:    'Digit3',
+    route4:    'Digit4',
+    route5:    'Digit5',
+  };
+
   const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
   const todayISO = () => new Date().toISOString().slice(0, 10);
 
@@ -114,6 +125,33 @@
     '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;',
   }[c]));
 
+  const keyLabel = (code) => {
+    if (!code) return '—';
+    const map = {
+      Slash: '/', Backslash: '\\', Comma: ',', Period: '.', Semicolon: ';',
+      Quote: "'", BracketLeft: '[', BracketRight: ']', Minus: '-', Equal: '=',
+      Backquote: '`', Space: 'Space', Enter: 'Enter', Tab: 'Tab',
+      Escape: 'Esc', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+    };
+    if (map[code]) return map[code];
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Digit')) return code.slice(5);
+    if (code.startsWith('Numpad')) return 'Num ' + code.slice(6);
+    return code;
+  };
+
+  const captureKey = () => new Promise((resolve) => {
+    const handler = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      document.removeEventListener('keydown', handler, true);
+      if (e.key === 'Escape') { resolve(null); return; }
+      if (['ShiftLeft','ShiftRight','ControlLeft','ControlRight','AltLeft','AltRight','MetaLeft','MetaRight'].includes(e.code)) return;
+      resolve(e.code);
+    };
+    document.addEventListener('keydown', handler, true);
+  });
+
   /* ============================================================
      Icons
   ============================================================ */
@@ -149,13 +187,18 @@
   let state = {
     clients: [],
     orders: [],
-    settings: { currency: 'RUB', dateFormat: 'DD.MM.YYYY', theme: 'light' },
+    settings: {
+      currency: 'RUB',
+      dateFormat: 'DD.MM.YYYY',
+      theme: 'light',
+      hotkeys: Object.assign({}, DEFAULT_HOTKEYS),
+    },
     events: [],
   };
 
   let ui = {
     route: 'dashboard',
-    ordersView: 'board',   // board | list
+    ordersView: 'board',
     filters: { status: 'all', clientId: 'all', sort: 'createdAt', dir: 'desc', query: '' },
     financeFilters: { clientId: 'all', from: '', to: '' },
     editingOrderId: null,
@@ -182,7 +225,11 @@
       const data = JSON.parse(raw);
       state.clients = Array.isArray(data.clients) ? data.clients : [];
       state.orders  = Array.isArray(data.orders) ? data.orders : [];
-      state.settings = Object.assign({ currency: 'RUB', dateFormat: 'DD.MM.YYYY', theme: 'light' }, data.settings || {});
+      state.settings = Object.assign(
+        { currency: 'RUB', dateFormat: 'DD.MM.YYYY', theme: 'light' },
+        data.settings || {}
+      );
+      state.settings.hotkeys = Object.assign({}, DEFAULT_HOTKEYS, state.settings.hotkeys || {});
       state.events  = Array.isArray(data.events) ? data.events : [];
       return true;
     } catch (e) {
@@ -229,11 +276,6 @@
       ? orders.reduce((a, b) => (a.createdAt > b.createdAt ? a : b)).createdAt
       : null;
     return { count: orders.length, total, last };
-  };
-
-  const monthKeyNow = () => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
   };
 
   /* ============================================================
@@ -513,7 +555,7 @@
       return `<text x="${padL - 8}" y="${y + 3}" text-anchor="end">${val >= 1000 ? Math.round(val/1000) + 'k' : val}</text>`;
     }).join('');
 
-        const bars = months.map((m, i) => {
+    const bars = months.map((m, i) => {
       const x = padL + stepX * i + (stepX - barW) / 2;
       const h = (m.sum / max) * innerH;
       const y = padT + innerH - h;
@@ -546,14 +588,15 @@
   const describeEvent = (e) => {
     const p = e.payload || {};
     switch (e.type) {
-      case 'order.created':  return `Новый заказ: ${escapeHtml(p.title || '')}`;
-      case 'order.status':   return `Заказ «${escapeHtml(p.title || '')}» → ${STATUS_MAP[p.status]?.label || p.status}`;
-      case 'order.paid':     return `Заказ «${escapeHtml(p.title || '')}» оплачен`;
-      case 'order.deleted':  return `Удалён заказ «${escapeHtml(p.title || '')}»`;
-      case 'order.updated':  return `Изменён заказ «${escapeHtml(p.title || '')}»`;
-      case 'client.created': return `Новый клиент: ${escapeHtml(p.name || '')}`;
-      case 'client.updated': return `Изменён клиент: ${escapeHtml(p.name || '')}`;
-      case 'client.archived':return `Клиент архивирован: ${escapeHtml(p.name || '')}`;
+      case 'order.created':  return 'Новый заказ: ' + escapeHtml(p.title || '');
+      case 'order.status':   return 'Заказ «' + escapeHtml(p.title || '') + '» → ' + ((STATUS_MAP[p.status] && STATUS_MAP[p.status].label) || p.status);
+      case 'order.paid':     return 'Заказ «' + escapeHtml(p.title || '') + '» оплачен';
+      case 'order.deleted':  return 'Удалён заказ «' + escapeHtml(p.title || '') + '»';
+      case 'order.updated':  return 'Изменён заказ «' + escapeHtml(p.title || '') + '»';
+      case 'client.created': return 'Новый клиент: ' + escapeHtml(p.name || '');
+      case 'client.updated': return 'Изменён клиент: ' + escapeHtml(p.name || '');
+      case 'client.archived':return 'Клиент архивирован: ' + escapeHtml(p.name || '');
+      case 'client.deleted': return 'Удалён клиент: ' + escapeHtml(p.name || '');
       default: return 'Событие';
     }
   };
@@ -611,20 +654,18 @@
         <div class="field" style="min-width:180px;">
           <select class="select select--sm" data-action="filter-client" aria-label="Клиент">
             <option value="all">Все клиенты</option>
-            ${state.clients.map(c => `<option value="${c.id}" ${ui.filters.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+            ${state.clients.map(c => '<option value="' + c.id + '"' + (ui.filters.clientId === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>').join('')}
           </select>
         </div>
         <div class="field" style="min-width:160px;">
           <select class="select select--sm" data-action="filter-status" aria-label="Статус">
             <option value="all">Все статусы</option>
-            ${STATUSES.map(s => `<option value="${s.id}" ${ui.filters.status===s.id?'selected':''}>${s.label}</option>`).join('')}
+            ${STATUSES.map(s => '<option value="' + s.id + '"' + (ui.filters.status === s.id ? ' selected' : '') + '>' + s.label + '</option>').join('')}
           </select>
         </div>
       </div>
 
-      ${ui.ordersView === 'board'
-        ? renderKanban(list)
-        : renderOrdersTable(list)}
+      ${ui.ordersView === 'board' ? renderKanban(list) : renderOrdersTable(list)}
     `;
   };
 
@@ -648,7 +689,7 @@
     `;
   };
 
-    const renderCard = (o) => {
+  const renderCard = (o) => {
     const c = clientById(o.clientId);
     const tone = fmt.deadlineTone(o.deadline);
     const clientName = c ? c.name : 'Без клиента';
@@ -680,7 +721,7 @@
     `;
   };
 
-    const renderOrdersTable = (list) => {
+  const renderOrdersTable = (list) => {
     if (!list.length) return emptyState('Заказов не найдено', 'Измените фильтры или создайте заказ', 'new-order', 'Создать заказ');
     const sortIcon = (key) => {
       if (ui.filters.sort !== key) return '';
@@ -770,7 +811,7 @@
     `;
   };
 
-    const renderClientCard = (c, isArchived = false) => {
+  const renderClientCard = (c, isArchived = false) => {
     const stats = clientStats(c.id);
     const company = c.company ? '<div class="client-card__company">' + escapeHtml(c.company) + '</div>' : '';
     const contact = c.contact ? '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;font-family:var(--mono);">' + escapeHtml(c.contact) + '</div>' : '';
@@ -798,6 +839,7 @@
           <button class="btn btn--ghost btn--sm" data-action="client-orders" data-id="${c.id}">Заказы</button>
           <button class="btn btn--ghost btn--sm" data-action="edit-client" data-id="${c.id}">${icon('edit',12)}</button>
           ${archiveBtn}
+          <button class="btn btn--ghost btn--sm" data-action="delete-client" data-id="${c.id}" style="color:var(--red);" aria-label="Удалить">${icon('trash',12)}</button>
         </div>
       </div>
     `;
@@ -827,7 +869,6 @@
     const totalAll = paid.reduce((s, o) => s + Number(o.amount||0), 0);
     const totalMonth = monthRevenue();
 
-    // top-3 clients
     const clientTotals = {};
     state.orders.filter(o => o.status === 'paid').forEach(o => {
       if (!o.clientId) return;
@@ -838,7 +879,6 @@
       .map(([id, sum]) => ({ client: clientById(id), sum }))
       .filter(x => x.client);
 
-    // months chart
     const monthsData = [];
     const now = new Date();
     for (let i = 11; i >= 0; i--) {
@@ -897,7 +937,7 @@
               <label class="field__label">Клиент</label>
               <select class="select" data-action="finance-client">
                 <option value="all">Все клиенты</option>
-                ${state.clients.map(c => `<option value="${c.id}" ${ff.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+                ${state.clients.map(c => '<option value="' + c.id + '"' + (ff.clientId === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>').join('')}
               </select>
             </div>
             <div class="field">
@@ -999,6 +1039,16 @@
   ============================================================ */
   const renderSettings = () => {
     const s = state.settings;
+    const hotkeyRows = [
+      ['newOrder',  'Новый заказ'],
+      ['newClient', 'Новый клиент'],
+      ['search',    'Поиск'],
+      ['route1',    'Раздел: Дашборд'],
+      ['route2',    'Раздел: Заказы'],
+      ['route3',    'Раздел: Клиенты'],
+      ['route4',    'Раздел: Финансы'],
+      ['route5',    'Раздел: Настройки'],
+    ];
     return `
       <div class="page-head">
         <div>
@@ -1014,7 +1064,7 @@
             <div class="setting-row">
               <div><div class="setting-row__label">Валюта по умолчанию</div><div class="setting-row__hint">используется для новых заказов</div></div>
               <select class="select select--sm" data-action="setting-currency" style="width:auto;">
-                ${Object.entries(CURRENCIES).map(([k, v]) => `<option value="${k}" ${s.currency===k?'selected':''}>${v.label} (${v.symbol})</option>`).join('')}
+                ${Object.entries(CURRENCIES).map(([k, v]) => '<option value="' + k + '"' + (s.currency === k ? ' selected' : '') + '>' + v.label + ' (' + v.symbol + ')</option>').join('')}
               </select>
             </div>
             <div class="setting-row">
@@ -1059,11 +1109,22 @@
           <div class="panel__head"><div class="panel__title">Горячие клавиши</div></div>
           <div class="panel__body">
             <div class="kbd-list">
-              <div class="kbd-row"><span>Новый заказ</span><kbd>N</kbd></div>
-              <div class="kbd-row"><span>Новый клиент</span><kbd>K</kbd></div>
-              <div class="kbd-row"><span>Закрыть модалку</span><kbd>Esc</kbd></div>
-              <div class="kbd-row"><span>Поиск</span><kbd>/</kbd></div>
-              <div class="kbd-row"><span>Разделы</span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> <kbd>5</kbd></div>
+              ${hotkeyRows.map(([key, label]) => `
+                <div class="kbd-row">
+                  <span>${label}</span>
+                  <button class="btn btn--ghost btn--sm" data-action="edit-hotkey" data-key="${key}" type="button" style="font-family:var(--mono);min-width:80px;justify-content:center;">
+                    ${keyLabel(s.hotkeys[key])}
+                  </button>
+                </div>
+              `).join('')}
+              <div class="kbd-row" style="margin-top:8px;padding-top:10px;border-top:1px dashed var(--border);">
+                <span style="color:var(--muted);font-size:12px;">Сбросить всё</span>
+                <button class="btn btn--ghost btn--sm" data-action="reset-hotkeys" type="button">По умолчанию</button>
+              </div>
+              <div class="kbd-row" style="margin-top:4px;">
+                <span style="color:var(--muted);font-size:12px;">Закрыть модалку</span>
+                <kbd>Esc</kbd>
+              </div>
             </div>
           </div>
         </div>
@@ -1074,14 +1135,15 @@
   /* ============================================================
      Empty state
   ============================================================ */
-  const emptyState = (title, text, action, btnLabel) => `
-    <div class="empty">
-      ${icon('inbox', 44)}
-      <div class="empty__title">${escapeHtml(title)}</div>
-      <div class="empty__text">${escapeHtml(text)}</div>
-      ${action ? `<button class="btn btn--primary" data-action="${action}">${icon('plus')} ${escapeHtml(btnLabel)}</button>` : ''}
-    </div>
-  `;
+  const emptyState = (title, text, action, btnLabel) => {
+    const btn = action
+      ? '<button class="btn btn--primary" data-action="' + action + '">' + icon('plus') + ' ' + escapeHtml(btnLabel) + '</button>'
+      : '';
+    return '<div class="empty">' + icon('inbox', 44) +
+      '<div class="empty__title">' + escapeHtml(title) + '</div>' +
+      '<div class="empty__text">' + escapeHtml(text) + '</div>' +
+      btn + '</div>';
+  };
 
   /* ============================================================
      App render
@@ -1112,6 +1174,15 @@
     const isEdit = !!orderId;
     const o = isEdit ? orderById(orderId) : null;
     const clients = state.clients.filter(c => !c.archived);
+    const clientsOptions = clients.map(c =>
+      '<option value="' + c.id + '"' + (o && o.clientId === c.id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>'
+    ).join('');
+    const statusOptions = STATUSES.map(s =>
+      '<option value="' + s.id + '"' + ((o ? o.status : 'new') === s.id ? ' selected' : '') + '>' + s.label + '</option>'
+    ).join('');
+    const currencyOptions = Object.entries(CURRENCIES).map(([k, v]) =>
+      '<option value="' + k + '"' + ((o ? o.currency : state.settings.currency) === k ? ' selected' : '') + '>' + v.label + ' (' + v.symbol + ')</option>'
+    ).join('');
 
     const html = `
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="orderModalTitle">
@@ -1129,14 +1200,12 @@
               <label class="field__label" for="o-client">Клиент</label>
               <select class="select" id="o-client" name="clientId">
                 <option value="">— без клиента —</option>
-                ${clients.map(c => `<option value="${c.id}" ${o && o.clientId===c.id?'selected':''}>${escapeHtml(c.name)}</option>`).join('')}
+                ${clientsOptions}
               </select>
             </div>
             <div class="field">
               <label class="field__label" for="o-status">Статус</label>
-              <select class="select" id="o-status" name="status">
-                ${STATUSES.map(s => `<option value="${s.id}" ${(o ? o.status : 'new')===s.id?'selected':''}>${s.label}</option>`).join('')}
-              </select>
+              <select class="select" id="o-status" name="status">${statusOptions}</select>
             </div>
             <div class="field">
               <label class="field__label" for="o-amount">Сумма *</label>
@@ -1144,9 +1213,7 @@
             </div>
             <div class="field">
               <label class="field__label" for="o-currency">Валюта</label>
-              <select class="select" id="o-currency" name="currency">
-                ${Object.entries(CURRENCIES).map(([k, v]) => `<option value="${k}" ${(o ? o.currency : state.settings.currency)===k?'selected':''}>${v.label} (${v.symbol})</option>`).join('')}
-              </select>
+              <select class="select" id="o-currency" name="currency">${currencyOptions}</select>
             </div>
             <div class="field">
               <label class="field__label" for="o-deadline">Дедлайн</label>
@@ -1323,6 +1390,79 @@
   };
 
   /* ============================================================
+     Client delete modal
+  ============================================================ */
+  const openClientDeleteModal = (client, relatedOrders) => {
+    const html = `
+      <div class="modal" role="dialog" aria-modal="true">
+        <div class="modal__head">
+          <div class="modal__title">Удалить клиента?</div>
+          <button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button>
+        </div>
+        <div class="modal__body">
+          <p style="margin:0 0 12px;color:var(--text-2);">
+            У клиента «${escapeHtml(client.name)}» есть заказы (${relatedOrders.length}). Выберите, что с ними делать:
+          </p>
+          <div style="display:flex;flex-direction:column;gap:10px;">
+            <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:10px;">
+              <input type="radio" name="delMode" value="detach" checked style="margin-top:3px;" />
+              <span>
+                <strong>Отвязать заказы</strong><br/>
+                <span style="font-size:12.5px;color:var(--muted);">Заказы останутся в системе как «Без клиента»</span>
+              </span>
+            </label>
+            <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:10px;">
+              <input type="radio" name="delMode" value="delete" style="margin-top:3px;" />
+              <span>
+                <strong>Удалить вместе с заказами</strong><br/>
+                <span style="font-size:12.5px;color:var(--muted);">Все ${relatedOrders.length} заказов клиента будут удалены</span>
+              </span>
+            </label>
+            <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer;padding:12px;border:1px solid var(--border);border-radius:10px;">
+              <input type="radio" name="delMode" value="archive" style="margin-top:3px;" />
+              <span>
+                <strong>Не удалять, а архивировать</strong><br/>
+                <span style="font-size:12.5px;color:var(--muted);">Клиент скроется, заказы сохранятся</span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div class="modal__foot">
+          <button class="btn btn--ghost" type="button" data-close>Отмена</button>
+          <button class="btn btn--danger" type="button" data-confirm>Подтвердить</button>
+        </div>
+      </div>
+    `;
+    modal.open(html, {
+      onMount(wrap, close) {
+        $$('[data-close]', wrap).forEach(b => b.addEventListener('click', close));
+        $('[data-confirm]', wrap).addEventListener('click', () => {
+          const checked = $('input[name="delMode"]:checked', wrap);
+          const mode = checked ? checked.value : 'detach';
+          if (mode === 'detach') {
+            state.orders.forEach(o => { if (o.clientId === client.id) o.clientId = ''; });
+            state.clients = state.clients.filter(x => x.id !== client.id);
+            pushEvent('client.deleted', { name: client.name });
+            toast('Клиент удалён, заказы отвязаны', 'info');
+          } else if (mode === 'delete') {
+            state.orders = state.orders.filter(o => o.clientId !== client.id);
+            state.clients = state.clients.filter(x => x.id !== client.id);
+            pushEvent('client.deleted', { name: client.name });
+            toast('Клиент и его заказы удалены', 'info');
+          } else {
+            client.archived = true;
+            pushEvent('client.archived', { name: client.name });
+            toast('Клиент в архиве', 'info');
+          }
+          save();
+          close();
+          renderApp();
+        });
+      }
+    });
+  };
+
+  /* ============================================================
      Confirm modal
   ============================================================ */
   const confirmModal = (title, text, onConfirm, danger = true) => {
@@ -1343,6 +1483,122 @@
       onMount(wrap, close) {
         $$('[data-close]', wrap).forEach(b => b.addEventListener('click', close));
         $('[data-confirm]', wrap).addEventListener('click', () => { close(); onConfirm(); });
+      }
+    });
+  };
+
+  /* ============================================================
+     Search modal
+  ============================================================ */
+  const openSearchModal = () => {
+    const html = `
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Поиск">
+        <div class="modal__head">
+          <div class="modal__title">Поиск</div>
+          <button class="icon-btn" data-close aria-label="Закрыть">${icon('close')}</button>
+        </div>
+        <div class="modal__body" style="gap:12px;">
+          <input
+            class="input"
+            id="searchInput"
+            type="text"
+            placeholder="Заказы, клиенты, описания, теги..."
+            autocomplete="off"
+          />
+          <div id="searchResults" style="max-height:50vh;overflow:auto;"></div>
+        </div>
+      </div>
+    `;
+
+    modal.open(html, {
+      onMount(wrap, close) {
+        $$('[data-close]', wrap).forEach(b => b.addEventListener('click', close));
+
+        const input = $('#searchInput', wrap);
+        const results = $('#searchResults', wrap);
+
+        const renderResults = (q) => {
+          const query = q.trim().toLowerCase();
+          if (!query) {
+            results.innerHTML = '<div class="empty" style="padding:30px 20px;">' + icon('search', 32) + '<div class="empty__text">Введите запрос</div></div>';
+            return;
+          }
+
+          const orders = state.orders.filter(o =>
+            (o.title || '').toLowerCase().includes(query) ||
+            (o.description || '').toLowerCase().includes(query) ||
+            (o.tags || []).some(t => t.toLowerCase().includes(query))
+          ).slice(0, 8);
+
+          const clients = state.clients.filter(c =>
+            (c.name || '').toLowerCase().includes(query) ||
+            (c.company || '').toLowerCase().includes(query) ||
+            (c.contact || '').toLowerCase().includes(query) ||
+            (c.notes || '').toLowerCase().includes(query)
+          ).slice(0, 8);
+
+          if (!orders.length && !clients.length) {
+            results.innerHTML = '<div class="empty" style="padding:30px 20px;">' + icon('search', 32) + '<div class="empty__title">Ничего не найдено</div></div>';
+            return;
+          }
+
+          let out = '';
+
+          if (orders.length) {
+            out += '<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 6px;">Заказы</div>';
+            out += orders.map(o => {
+              const c = clientById(o.clientId);
+              const statusLabel = (STATUS_MAP[o.status] && STATUS_MAP[o.status].label) || o.status;
+              return `
+                <button class="search-item" data-search-order="${o.id}" type="button" style="
+                  width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+                  background:var(--panel);margin-bottom:6px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;align-items:center;
+                ">
+                  <span style="min-width:0;overflow:hidden;">
+                    <span style="display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(o.title)}</span>
+                    <span style="display:block;font-size:12px;color:var(--muted);">${c ? escapeHtml(c.name) : 'Без клиента'} · ${statusLabel}</span>
+                  </span>
+                  <span style="font-family:var(--mono);font-size:13px;white-space:nowrap;">${fmt.money(o.amount, o.currency, state.settings)}</span>
+                </button>`;
+            }).join('');
+          }
+
+          if (clients.length) {
+            out += '<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin:12px 0 6px;">Клиенты</div>';
+            out += clients.map(c => `
+              <button class="search-item" data-search-client="${c.id}" type="button" style="
+                width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--border);
+                background:var(--panel);margin-bottom:6px;cursor:pointer;display:flex;gap:10px;align-items:center;
+              ">
+                <span class="avatar">${fmt.initials(c.name)}</span>
+                <span style="min-width:0;overflow:hidden;">
+                  <span style="display:block;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c.name)}</span>
+                  <span style="display:block;font-size:12px;color:var(--muted);">${escapeHtml(c.company || c.contact || '')}</span>
+                </span>
+              </button>`).join('');
+          }
+
+          results.innerHTML = out;
+
+          $$('[data-search-order]', results).forEach(el => {
+            el.addEventListener('click', () => {
+              const orderId = el.dataset.searchOrder;
+              close();
+              setTimeout(() => openOrderModal(orderId), 100);
+            });
+          });
+          $$('[data-search-client]', results).forEach(el => {
+            el.addEventListener('click', () => {
+              const clientId = el.dataset.searchClient;
+              close();
+              setTimeout(() => openClientModal(clientId), 100);
+            });
+          });
+        };
+
+        renderResults('');
+        input.addEventListener('input', (e) => renderResults(e.target.value));
+        setTimeout(() => input.focus(), 50);
       }
     });
   };
@@ -1399,7 +1655,7 @@
   const deleteOrder = (id) => {
     const o = orderById(id);
     if (!o) return;
-    confirmModal('Удалить заказ?', `«${o.title}» будет удалён безвозвратно.`, () => {
+    confirmModal('Удалить заказ?', '«' + o.title + '» будет удалён безвозвратно.', () => {
       state.orders = state.orders.filter(x => x.id !== id);
       pushEvent('order.deleted', { title: o.title });
       toast('Заказ удалён', 'info');
@@ -1411,18 +1667,43 @@
   const archiveClient = (id) => {
     const c = clientById(id);
     if (!c) return;
-    const hasOrders = state.orders.some(o => o.clientId === id);
-    const doArchive = () => {
+    confirmModal('Переместить в архив?', '«' + c.name + '» будет скрыт из активных.', () => {
       c.archived = true;
       pushEvent('client.archived', { name: c.name });
       toast('Клиент в архиве', 'info');
       save();
       renderApp();
-    };
-    if (hasOrders) {
-      confirmModal('У клиента есть заказы', 'Клиента нельзя удалить. Переместить в архив?', doArchive, false);
+    }, false);
+  };
+
+  const unarchiveClient = (id) => {
+    const c = clientById(id);
+    if (!c) return;
+    c.archived = false;
+    pushEvent('client.updated', { name: c.name });
+    toast('Клиент возвращён', 'success');
+    save();
+    renderApp();
+  };
+
+  const deleteClient = (id) => {
+    const c = clientById(id);
+    if (!c) return;
+    const relatedOrders = state.orders.filter(o => o.clientId === id);
+    if (relatedOrders.length) {
+      openClientDeleteModal(c, relatedOrders);
     } else {
-      confirmModal('Переместить в архив?', `«${c.name}» будет скрыт из активных.`, doArchive, false);
+      confirmModal(
+        'Удалить клиента?',
+        '«' + c.name + '» будет удалён безвозвратно.',
+        () => {
+          state.clients = state.clients.filter(x => x.id !== id);
+          pushEvent('client.deleted', { name: c.name });
+          toast('Клиент удалён', 'info');
+          save();
+          renderApp();
+        }
+      );
     }
   };
 
@@ -1438,8 +1719,8 @@
         ];
       })
     ];
-    const csv = rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(',')).join('\n');
-    downloadBlob(new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8' }), `craftly-finance-${todayISO()}.csv`);
+    const csv = rows.map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g,'""') + '"').join(',')).join('\n');
+    downloadBlob(new Blob(["\uFEFF"+csv], { type: 'text/csv;charset=utf-8' }), 'craftly-finance-' + todayISO() + '.csv');
     toast('Экспорт CSV готов', 'success');
   };
 
@@ -1450,7 +1731,7 @@
       settings: state.settings,
       exportedAt: new Date().toISOString(),
     };
-    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), `craftly-backup-${todayISO()}.json`);
+    downloadBlob(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }), 'craftly-backup-' + todayISO() + '.json');
     toast('Данные экспортированы', 'success');
   };
 
@@ -1463,6 +1744,7 @@
         state.clients = Array.isArray(data.clients) ? data.clients : [];
         state.orders  = Array.isArray(data.orders)  ? data.orders  : [];
         if (data.settings) state.settings = Object.assign(state.settings, data.settings);
+        state.settings.hotkeys = Object.assign({}, DEFAULT_HOTKEYS, state.settings.hotkeys || {});
         state.events = [];
         pushEvent('client.created', { name: 'Импорт данных' });
         save();
@@ -1530,14 +1812,16 @@
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       $$('.column.is-over').forEach(el => el.classList.remove('is-over'));
-      zone.closest('.column')?.classList.add('is-over');
+      const col = zone.closest('.column');
+      if (col) col.classList.add('is-over');
     });
 
     document.addEventListener('dragleave', (e) => {
       const zone = e.target.closest('[data-dropzone]');
       if (!zone) return;
       if (!zone.contains(e.relatedTarget)) {
-        zone.closest('.column')?.classList.remove('is-over');
+        const col = zone.closest('.column');
+        if (col) col.classList.remove('is-over');
       }
     });
 
@@ -1578,11 +1862,8 @@
         case 'move-prev':  moveOrderStatus(id, -1); break;
         case 'move-next':  moveOrderStatus(id, +1); break;
         case 'archive-client': archiveClient(id); break;
-        case 'unarchive-client': {
-          const c = clientById(id);
-          if (c) { c.archived = false; save(); renderApp(); toast('Клиент возвращён', 'success'); }
-          break;
-        }
+        case 'unarchive-client': unarchiveClient(id); break;
+        case 'delete-client': deleteClient(id); break;
         case 'client-orders':
           navigate('orders', { filters: { clientId: id, status: 'all' } });
           break;
@@ -1601,6 +1882,38 @@
         case 'setting-theme': {
           state.settings.theme = btn.dataset.theme;
           applyTheme(); save(); renderApp();
+          break;
+        }
+        case 'edit-hotkey': {
+          const key = btn.dataset.key;
+          const originalText = btn.textContent;
+          btn.textContent = 'Нажмите...';
+          btn.disabled = true;
+          captureKey().then((newCode) => {
+            btn.disabled = false;
+            if (newCode) {
+              const dup = Object.entries(state.settings.hotkeys)
+                .find(([k, v]) => k !== key && v === newCode);
+              if (dup) {
+                toast('Клавиша уже используется', 'error');
+                btn.textContent = originalText;
+              } else {
+                state.settings.hotkeys[key] = newCode;
+                save();
+                toast('Горячая клавиша обновлена', 'success');
+                renderApp();
+              }
+            } else {
+              renderApp();
+            }
+          });
+          break;
+        }
+        case 'reset-hotkeys': {
+          state.settings.hotkeys = Object.assign({}, DEFAULT_HOTKEYS);
+          save();
+          toast('Горячие клавиши сброшены', 'success');
+          renderApp();
           break;
         }
       }
@@ -1645,6 +1958,11 @@
       }
     });
 
+    // Search button
+    $('#searchBtn').addEventListener('click', () => {
+      openSearchModal();
+    });
+
     // Theme toggle button
     $('#themeBtn').addEventListener('click', () => {
       state.settings.theme = state.settings.theme === 'light' ? 'dark' : 'light';
@@ -1670,25 +1988,20 @@
       }
 
       if (typing) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === 'n' || e.key === 'N') { e.preventDefault(); openOrderModal(); }
-      else if (e.key === 'k' || e.key === 'K') { e.preventDefault(); openClientModal(); }
-      else if (e.key === '/') { e.preventDefault(); focusSearch(); }
-      else if (['1','2','3','4','5'].includes(e.key)) {
-        const map = ['dashboard','orders','clients','finance','settings'];
-        navigate(map[parseInt(e.key, 10) - 1]);
-      }
+      const hk = state.settings.hotkeys;
+      const code = e.code;
+
+      if (code === hk.newOrder)  { e.preventDefault(); openOrderModal(); return; }
+      if (code === hk.newClient) { e.preventDefault(); openClientModal(); return; }
+      if (code === hk.search)    { e.preventDefault(); openSearchModal(); return; }
+      if (code === hk.route1) { e.preventDefault(); navigate('dashboard'); return; }
+      if (code === hk.route2) { e.preventDefault(); navigate('orders');    return; }
+      if (code === hk.route3) { e.preventDefault(); navigate('clients');   return; }
+      if (code === hk.route4) { e.preventDefault(); navigate('finance');   return; }
+      if (code === hk.route5) { e.preventDefault(); navigate('settings');  return; }
     });
-  };
-
-  const focusSearch = () => {
-    navigate('orders');
-    setTimeout(() => {
-      const input = $('#ordersSearch');
-      if (input) { input.focus(); return; }
-      const q = prompt('Поиск по заказам:');
-      if (q !== null) { ui.filters.query = q; renderApp(); }
-    }, 60);
   };
 
   /* ============================================================
@@ -1699,10 +2012,13 @@
     if (mobileNavEl) { closeMobileNav(); return; }
     const el = document.createElement('div');
     el.className = 'mobile-nav';
-    el.innerHTML = `
-      ${[['dashboard','Дашборд'],['orders','Заказы'],['clients','Клиенты'],['finance','Финансы'],['settings','Настройки']]
-        .map(([k, l]) => `<button data-nav="${k}" class="${ui.route===k?'is-active':''}">${l}</button>`).join('')}
-    `;
+    el.innerHTML = [
+      ['dashboard', 'Дашборд'],
+      ['orders', 'Заказы'],
+      ['clients', 'Клиенты'],
+      ['finance', 'Финансы'],
+      ['settings', 'Настройки'],
+    ].map(([k, l]) => '<button data-nav="' + k + '" class="' + (ui.route === k ? 'is-active' : '') + '">' + l + '</button>').join('');
     document.body.appendChild(el);
     mobileNavEl = el;
     setTimeout(() => document.addEventListener('click', outsideMobileNav, { once: true }), 0);
@@ -1721,11 +2037,6 @@
     load();
     applyTheme();
 
-    if (!state.clients.length && !state.orders.length) {
-      seedDemo();
-      save();
-    }
-
     const hash = location.hash.replace('#','');
     if (routes.includes(hash)) ui.route = hash;
 
@@ -1739,45 +2050,7 @@
     });
   };
 
-  /* ============================================================
-     Demo seed (первый запуск)
-  ============================================================ */
-  const seedDemo = () => {
-    const c1 = { id: uid(), name: 'Иван Петров', company: 'ООО «Ромашка»', contact: '+7 999 123-45-67', notes: 'Постоянный клиент', archived: false, createdAt: new Date(Date.now() - 86400000 * 40).toISOString() };
-    const c2 = { id: uid(), name: 'Анна Смирнова', company: 'Studio AS', contact: 'anna@studio.as', notes: '', archived: false, createdAt: new Date(Date.now() - 86400000 * 25).toISOString() };
-    const c3 = { id: uid(), name: 'Максим Орлов', company: '', contact: '@maxorlov', notes: 'Рекомендация от Ивана', archived: false, createdAt: new Date(Date.now() - 86400000 * 10).toISOString() };
-    state.clients.push(c1, c2, c3);
-
-    const mk = (clientId, title, amount, status, daysAgo, deadlineDays, tags, paidDaysAgo) => {
-      const createdAt = new Date(Date.now() - 86400000 * daysAgo).toISOString();
-      const deadline = new Date(Date.now() + 86400000 * deadlineDays).toISOString().slice(0,10);
-      return {
-        id: uid(), clientId, title, amount, currency: 'RUB', status,
-        deadline, tags, description: '', links: '',
-        createdAt,
-        paidAt: status === 'paid' ? new Date(Date.now() - 86400000 * paidDaysAgo).toISOString() : null,
-      };
-    };
-
-    state.orders.push(
-      mk(c1.id, 'Редизайн корпоративного сайта', 150000, 'progress', 12, 8, ['сайт','дизайн']),
-      mk(c1.id, 'Лендинг для продукта', 85000, 'paid', 40, 30, ['лендинг'], 32),
-      mk(c2.id, 'Логотип и брендбук', 60000, 'paid', 30, 20, ['логотип','бренд'], 22),
-      mk(c2.id, 'Telegram-бот для заявок', 95000, 'review', 10, 4, ['бот','разработка']),
-      mk(c3.id, 'Серия постов для соцсетей', 35000, 'new', 3, 12, ['контент']),
-      mk(c3.id, 'Аудит текущего сайта', 25000, 'done', 20, 2, ['аудит'], null),
-      mk(c1.id, 'Поддержка сайта (март)', 45000, 'paid', 70, 60, ['поддержка'], 62),
-      mk(c2.id, 'Презентация для инвесторов', 70000, 'paid', 55, 45, ['презентация'], 48)
-    );
-
-    pushEvent('client.created', { name: c1.name });
-    pushEvent('client.created', { name: c2.name });
-    pushEvent('client.created', { name: c3.name });
-    pushEvent('order.created', { title: 'Редизайн корпоративного сайта' });
-    pushEvent('order.paid', { title: 'Лендинг для продукта' });
-  };
-
-   if (document.readyState === 'loading') {
+  if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
   } else {
     init();
