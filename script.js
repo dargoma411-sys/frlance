@@ -647,21 +647,28 @@
     `;
   };
 
-  const renderCard = (o) => {
+    const renderCard = (o) => {
     const c = clientById(o.clientId);
     const tone = fmt.deadlineTone(o.deadline);
+    const clientName = c ? c.name : 'Без клиента';
+    const deadlinePill = o.deadline
+      ? '<div class="card__row"><span class="pill pill--' + tone + '">' + icon('calendar',12) + ' ' + fmt.deadlineLabel(o.deadline) + '</span></div>'
+      : '';
+    const tags = (o.tags && o.tags.length)
+      ? '<div class="card__tags">' + o.tags.map(t => '<span class="tag">' + escapeHtml(t) + '</span>').join('') + '</div>'
+      : '';
     return `
       <div class="card" draggable="true" data-order-id="${o.id}" tabindex="0" role="button" aria-label="Заказ ${escapeHtml(o.title)}">
         <div class="card__title">${escapeHtml(o.title)}</div>
         <div class="card__row">
-          <span class="avatar">${fmt.initials(c?.name || '?')}</span>
-          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(c?.name || 'Без клиента')}</span>
+          <span class="avatar">${fmt.initials(clientName)}</span>
+          <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(clientName)}</span>
         </div>
         <div class="card__row">
           <span class="card__amount">${fmt.money(o.amount, o.currency, state.settings)}</span>
         </div>
-        ${o.deadline ? `<div class="card__row"><span class="pill pill--${tone}">${icon('calendar',12)} ${fmt.deadlineLabel(o.deadline)}</span></div>` : ''}
-        ${(o.tags && o.tags.length) ? `<div class="card__tags">${o.tags.map(t => `<span class="tag">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
+        ${deadlinePill}
+        ${tags}
         <div class="card__actions">
           <button class="icon-btn" data-action="move-prev" data-id="${o.id}" aria-label="Влево">${icon('arrowLeft',14)}</button>
           <button class="icon-btn" data-action="edit-order" data-id="${o.id}" aria-label="Редактировать">${icon('edit',14)}</button>
@@ -672,12 +679,41 @@
     `;
   };
 
-  const renderOrdersTable = (list) => {
+    const renderOrdersTable = (list) => {
     if (!list.length) return emptyState('Заказов не найдено', 'Измените фильтры или создайте заказ', 'new-order', 'Создать заказ');
     const sortIcon = (key) => {
       if (ui.filters.sort !== key) return '';
       return ui.filters.dir === 'asc' ? ' ↑' : ' ↓';
     };
+    const rows = list.map(o => {
+      const c = clientById(o.clientId);
+      const tone = fmt.deadlineTone(o.deadline);
+      const clientName = c ? c.name : '—';
+      const deadlineCell = o.deadline
+        ? '<span class="pill pill--' + tone + '">' + fmt.date(o.deadline, state.settings) + '</span>'
+        : '—';
+      const statusLabel = (STATUS_MAP[o.status] && STATUS_MAP[o.status].label) || o.status;
+      const statusTone = STATUS_TONE[o.status] || 'gray';
+      return `
+        <tr>
+          <td><strong>${escapeHtml(o.title)}</strong></td>
+          <td>
+            <span style="display:inline-flex;align-items:center;gap:8px;">
+              <span class="avatar">${fmt.initials(clientName)}</span>
+              ${escapeHtml(clientName)}
+            </span>
+          </td>
+          <td><span class="pill pill--${statusTone}">${statusLabel}</span></td>
+          <td class="num">${fmt.money(o.amount, o.currency, state.settings)}</td>
+          <td>${deadlineCell}</td>
+          <td>
+            <div style="display:flex;gap:4px;">
+              <button class="icon-btn" data-action="edit-order" data-id="${o.id}" aria-label="Редактировать">${icon('edit',14)}</button>
+              <button class="icon-btn" data-action="delete-order" data-id="${o.id}" aria-label="Удалить">${icon('trash',14)}</button>
+            </div>
+          </td>
+        </tr>`;
+    }).join('');
     return `
       <div class="panel">
         <div class="table-wrap">
@@ -692,31 +728,7 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody>
-              ${list.map(o => {
-                const c = clientById(o.clientId);
-                const tone = fmt.deadlineTone(o.deadline);
-                return `
-                  <tr>
-                    <td><strong>${escapeHtml(o.title)}</strong></td>
-                    <td>
-                      <span style="display:inline-flex;align-items:center;gap:8px;">
-                        <span class="avatar">${fmt.initials(c?.name || '?')}</span>
-                        ${escapeHtml(c?.name || '—')}
-                      </span>
-                    </td>
-                    <td><span class="pill pill--${STATUS_TONE[o.status]}">${STATUS_MAP[o.status]?.label || o.status}</span></td>
-                    <td class="num">${fmt.money(o.amount, o.currency, state.settings)}</td>
-                    <td>${o.deadline ? `<span class="pill pill--${tone}">${fmt.date(o.deadline, state.settings)}</span>` : '—'}</td>
-                    <td>
-                      <div style="display:flex;gap:4px;">
-                        <button class="icon-btn" data-action="edit-order" data-id="${o.id}" aria-label="Редактировать">${icon('edit',14)}</button>
-                        <button class="icon-btn" data-action="delete-order" data-id="${o.id}" aria-label="Удалить">${icon('trash',14)}</button>
-                      </div>
-                    </td>
-                  </tr>`;
-              }).join('')}
-            </tbody>
+            <tbody>${rows}</tbody>
           </table>
         </div>
       </div>
