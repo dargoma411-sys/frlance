@@ -1760,5 +1760,9 @@
     pushEvent('order.paid', { title: 'Лендинг для продукта' });
   };
 
-  document.addEventListener('DOMContentLoaded', init);
+   if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
