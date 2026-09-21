@@ -757,30 +757,34 @@
     `;
   };
 
-  const renderClientCard = (c, isArchived = false) => {
+    const renderClientCard = (c, isArchived = false) => {
     const stats = clientStats(c.id);
+    const company = c.company ? '<div class="client-card__company">' + escapeHtml(c.company) + '</div>' : '';
+    const contact = c.contact ? '<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;font-family:var(--mono);">' + escapeHtml(c.contact) + '</div>' : '';
+    const notes = c.notes ? '<div style="font-size:12.5px;color:var(--text-2);margin-top:10px;border-left:2px solid var(--border);padding-left:8px;">' + escapeHtml(c.notes) + '</div>' : '';
+    const archiveBtn = isArchived
+      ? '<button class="btn btn--ghost btn--sm" data-action="unarchive-client" data-id="' + c.id + '">Вернуть</button>'
+      : '<button class="btn btn--ghost btn--sm" data-action="archive-client" data-id="' + c.id + '">Архив</button>';
     return `
       <div class="client-card reveal">
         <div class="client-card__head">
           <span class="avatar avatar--lg">${fmt.initials(c.name)}</span>
           <div style="min-width:0;">
             <div class="client-card__name">${escapeHtml(c.name)}</div>
-            ${c.company ? `<div class="client-card__company">${escapeHtml(c.company)}</div>` : ''}
+            ${company}
           </div>
         </div>
-        ${c.contact ? `<div style="font-size:12.5px;color:var(--muted);margin-bottom:10px;font-family:var(--mono);">${escapeHtml(c.contact)}</div>` : ''}
+        ${contact}
         <div class="client-card__stats">
           <div><div class="client-card__stat-label">Заказов</div><div class="client-card__stat-value">${stats.count}</div></div>
           <div><div class="client-card__stat-label">Оплачено</div><div class="client-card__stat-value">${fmt.money(stats.total, null, state.settings)}</div></div>
           <div style="grid-column:1/-1;"><div class="client-card__stat-label">Последний заказ</div><div class="client-card__stat-value">${stats.last ? fmt.date(stats.last, state.settings) : '—'}</div></div>
         </div>
-        ${c.notes ? `<div style="font-size:12.5px;color:var(--text-2);margin-top:10px;border-left:2px solid var(--border);padding-left:8px;">${escapeHtml(c.notes)}</div>` : ''}
+        ${notes}
         <div class="client-card__actions">
           <button class="btn btn--ghost btn--sm" data-action="client-orders" data-id="${c.id}">Заказы</button>
           <button class="btn btn--ghost btn--sm" data-action="edit-client" data-id="${c.id}">${icon('edit',12)}</button>
-          ${isArchived
-            ? `<button class="btn btn--ghost btn--sm" data-action="unarchive-client" data-id="${c.id}">Вернуть</button>`
-            : `<button class="btn btn--ghost btn--sm" data-action="archive-client" data-id="${c.id}">Архив</button>`}
+          ${archiveBtn}
         </div>
       </div>
     `;
